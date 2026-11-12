@@ -100,7 +100,8 @@ O orquestrador desfaz os passos concluídos, do mais recente para o mais antigo:
 | Falha | Compensações, em ordem | Status final da OS |
 |---|---|---|
 | `ReservaRecusada` | nenhuma: nada foi reservado | `CANCELADA` |
-| `OrcamentoRejeitado` | `LiberarReserva` | `NEGADA` |
+| `OrcamentoRejeitado` com motivo `ORCAMENTO_REJEITADO` | `LiberarReserva` | `NEGADA` |
+| `OrcamentoRejeitado` com motivo `ORCAMENTO_EXPIRADO` | `LiberarReserva` | `CANCELADA` |
 | `PagamentoRecusado` | `CancelarOrcamento` → `LiberarReserva` | `CANCELADA` |
 | `EnfileiramentoRecusado` | `Reembolsar` → `CancelarOrcamento` → `LiberarReserva` | `CANCELADA` |
 | Prazo do passo esgotado | as do ponto em que parou, com motivo `PRAZO_ESGOTADO` | `CANCELADA` |
