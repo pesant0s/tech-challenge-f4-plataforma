@@ -19,8 +19,8 @@ o mesmo comando pode chegar duas vezes.
   publica com *publisher confirms* e só então marca como publicado.
 - **Inbox**: o consumidor grava o `message_id` em `mensagens_processadas` na mesma transação do efeito.
   Se o `message_id` já existe, ele confirma (`ack`) sem repetir o efeito.
-- **ack manual**, enviado só depois do commit. Erro inesperado → `nack` com reentrega; na sexta entrega
-  a mensagem vai para a DLQ (ADR-019).
+- **ack manual**, enviado só depois do commit. Erro inesperado → `nack` com reentrega; depois de seis
+  entregas sem `ack`, a mensagem vai para a DLQ (ADR-019).
 
 ## Alternativas
 

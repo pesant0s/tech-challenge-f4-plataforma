@@ -20,8 +20,8 @@ Validação: `npx @asyncapi/cli validate docs/contratos/asyncapi.yaml`.
 | `os-service.eventos` | `oficina.eventos` | `execucao.#` e `billing.#` | OS Service |
 | `<fila>.dlq` | `oficina.dlx` | nome da fila de origem | ninguém (alerta e inspeção) |
 
-- As filas são **quorum queues** com `x-delivery-limit: 5`: na sexta entrega sem `ack`, a mensagem vai
-  para a DLQ da fila (`x-dead-letter-exchange: oficina.dlx`, `x-dead-letter-routing-key: <fila>`).
+- As filas são **quorum queues** com `x-delivery-limit: 5`: depois de seis entregas sem `ack` (a
+  primeira e cinco reentregas), a mensagem vai para a DLQ da fila (`x-dead-letter-exchange: oficina.dlx`, `x-dead-letter-routing-key: <fila>`).
 - Cada serviço declara as exchanges em que publica e as filas que consome ao iniciar. A declaração é
   idempotente, então a ordem de subida não importa.
 - A chave de roteamento é `<serviço de destino ou de origem>.<mensagem em kebab-case>`, por exemplo
