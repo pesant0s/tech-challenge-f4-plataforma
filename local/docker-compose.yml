@@ -1,0 +1,83 @@
+# Ambiente local da Saga (ADR-024): broker e bancos de cada serviço, sem nuvem.
+# Os serviços conectam por localhost nas portas publicadas abaixo.
+name: oficina
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: oficina
+      RABBITMQ_DEFAULT_PASS: oficina
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    mem_limit: 512m
+
+  postgres-os:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: os
+      POSTGRES_PASSWORD: os
+      POSTGRES_DB: os
+    volumes:
+      - postgres-os:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U os"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+  postgres-execucao:
+    image: postgres:16-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: execucao
+      POSTGRES_PASSWORD: execucao
+      POSTGRES_DB: execucao
+    volumes:
+      - postgres-execucao:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U execucao"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+  # Replica set de um nó: transações multi-documento exigem replica set (ADR-020).
+  # O healthcheck inicia o replica set na primeira vez e depois só confirma que há primário.
+  mongo:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo:/data/db
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+    mem_limit: 512m
+
+volumes:
+  rabbitmq:
+  postgres-os:
+  postgres-execucao:
+  mongo:

@@ -301,6 +301,29 @@ de API fora do ar abre um incidente. É esperado e fecha sozinho quando a API re
 
 ---
 
+## Ambiente local da Saga
+
+Broker e bancos dos três serviços em docker compose, sem nuvem (ADR-024). Só exige Docker.
+
+```bash
+make local-up       # sobe e espera todos ficarem saudáveis
+make local-status
+make local-down     # derruba e apaga os volumes
+```
+
+| Componente | Endereço | Credenciais |
+|---|---|---|
+| RabbitMQ | `amqp://localhost:5672` · painel em http://localhost:15672 | `oficina` / `oficina` |
+| PostgreSQL do OS Service | `localhost:5433`, banco `os` | `os` / `os` |
+| PostgreSQL da Execução | `localhost:5434`, banco `execucao` | `execucao` / `execucao` |
+| MongoDB do Billing | `mongodb://localhost:27017/?replicaSet=rs0` | sem autenticação |
+
+O MongoDB sobe como replica set de um nó, porque as transações do outbox (ADR-021) exigem replica set.
+As exchanges e filas não são criadas aqui: cada serviço declara as suas ao iniciar
+([`docs/contratos`](docs/contratos/README.md)).
+
+---
+
 ## Como usar
 
 > **Montando tudo do zero?** Siga o roteiro completo no README do `tech-challenge-infra-db`,
