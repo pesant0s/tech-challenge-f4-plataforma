@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help conta preflight init fmt validate plan up down apply destroy kubeconfig output status custo ambiente-ligar ambiente-desligar ambiente-status github-segredos implantar
+.PHONY: help conta preflight init fmt validate plan up down apply destroy kubeconfig output status custo ambiente-ligar ambiente-desligar ambiente-status github-segredos implantar local-up local-down local-status
 
 AWS_REGION ?= us-east-1
 export AWS_REGION
@@ -99,3 +99,14 @@ custo: ## O que pesa enquanto o cluster está de pé
 	@echo "NLB interno        US\$$ 0,023/h"
 	@echo "EBS dos nodes      US\$$ 0,004/h"
 	@echo "Total ligado       ~US\$$ 0,16/h"
+
+local-up: ## Sobe RabbitMQ e os bancos da Saga localmente (docker compose)
+	docker compose -f local/docker-compose.yml up -d --wait
+	@echo "RabbitMQ: amqp://oficina:oficina@localhost:5672 · painel http://localhost:15672"
+	@echo "PostgreSQL OS: localhost:5433 · Execução: localhost:5434 · MongoDB: localhost:27017 (rs0)"
+
+local-down: ## Derruba o ambiente local e apaga os volumes
+	docker compose -f local/docker-compose.yml down -v
+
+local-status: ## Estado dos containers locais
+	docker compose -f local/docker-compose.yml ps
