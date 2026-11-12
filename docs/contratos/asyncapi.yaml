@@ -1,0 +1,1067 @@
+asyncapi: 3.0.0
+
+info:
+  title: Saga da Ordem de Serviço
+  version: 1.0.0
+  description: |
+    Contrato das mensagens trocadas entre os serviços da oficina pelo RabbitMQ.
+
+    O documento é escrito do ponto de vista do OS Service, que orquestra a Saga: ele envia os
+    comandos para a Execução e o Billing e recebe os eventos que os dois publicam. Cada um desses
+    serviços faz o caminho inverso: consome os próprios comandos e publica os próprios eventos.
+
+    Regras que valem para todas as mensagens:
+    - O corpo é sempre o envelope `Envelope`; o conteúdo específico fica em `payload`.
+    - `message_id` é único por mensagem e serve de chave de idempotência no consumidor.
+    - `saga_id` identifica a Saga e `os_id` a ordem de serviço; há uma Saga por OS.
+    - Valores monetários são texto com duas casas decimais (`"150.00"`), nunca número de ponto flutuante.
+    - Datas e horas seguem a RFC 3339, em UTC.
+    - O contexto de rastreamento distribuído vai nos cabeçalhos AMQP (`traceparent`, `tracestate`,
+      `newrelic`), e não no corpo.
+
+defaultContentType: application/json
+
+servers:
+  local:
+    host: localhost:5672
+    protocol: amqp
+    description: RabbitMQ do docker compose.
+  cluster:
+    host: rabbitmq.mensageria.svc.cluster.local:5672
+    protocol: amqp
+    description: RabbitMQ dentro do EKS.
+
+channels:
+  # ─── Comandos para a Execução ───────────────────────────────────────────────
+  reservarPecas:
+    address: execucao.reservar-pecas
+    description: Reserva as peças da OS e devolve os itens com preço.
+    messages:
+      ReservarPecas:
+        $ref: '#/components/messages/ReservarPecas'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+  liberarReserva:
+    address: execucao.liberar-reserva
+    description: Compensação da reserva de peças.
+    messages:
+      LiberarReserva:
+        $ref: '#/components/messages/LiberarReserva'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+  enfileirarOS:
+    address: execucao.enfileirar-os
+    description: Coloca a OS paga na fila de execução e consome a reserva.
+    messages:
+      EnfileirarOS:
+        $ref: '#/components/messages/EnfileirarOS'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+
+  # ─── Comandos para o Billing ────────────────────────────────────────────────
+  gerarOrcamento:
+    address: billing.gerar-orcamento
+    description: Gera o orçamento a partir dos itens reservados e o envia ao cliente.
+    messages:
+      GerarOrcamento:
+        $ref: '#/components/messages/GerarOrcamento'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+  cobrar:
+    address: billing.cobrar
+    description: Cria a cobrança do orçamento aprovado no provedor de pagamento.
+    messages:
+      Cobrar:
+        $ref: '#/components/messages/Cobrar'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+  cancelarOrcamento:
+    address: billing.cancelar-orcamento
+    description: Compensação do orçamento; cancela também a cobrança ainda não paga.
+    messages:
+      CancelarOrcamento:
+        $ref: '#/components/messages/CancelarOrcamento'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+  reembolsar:
+    address: billing.reembolsar
+    description: Compensação do pagamento confirmado.
+    messages:
+      Reembolsar:
+        $ref: '#/components/messages/Reembolsar'
+    bindings:
+      $ref: '#/components/channelBindings/comandos'
+
+  # ─── Eventos da Execução ────────────────────────────────────────────────────
+  pecasReservadas:
+    address: execucao.pecas-reservadas
+    messages:
+      PecasReservadas:
+        $ref: '#/components/messages/PecasReservadas'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  reservaRecusada:
+    address: execucao.reserva-recusada
+    messages:
+      ReservaRecusada:
+        $ref: '#/components/messages/ReservaRecusada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  reservaLiberada:
+    address: execucao.reserva-liberada
+    messages:
+      ReservaLiberada:
+        $ref: '#/components/messages/ReservaLiberada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  osEnfileirada:
+    address: execucao.os-enfileirada
+    messages:
+      OSEnfileirada:
+        $ref: '#/components/messages/OSEnfileirada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  enfileiramentoRecusado:
+    address: execucao.enfileiramento-recusado
+    messages:
+      EnfileiramentoRecusado:
+        $ref: '#/components/messages/EnfileiramentoRecusado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  diagnosticoIniciado:
+    address: execucao.diagnostico-iniciado
+    messages:
+      DiagnosticoIniciado:
+        $ref: '#/components/messages/DiagnosticoIniciado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  execucaoIniciada:
+    address: execucao.execucao-iniciada
+    messages:
+      ExecucaoIniciada:
+        $ref: '#/components/messages/ExecucaoIniciada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  execucaoFinalizada:
+    address: execucao.execucao-finalizada
+    messages:
+      ExecucaoFinalizada:
+        $ref: '#/components/messages/ExecucaoFinalizada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+
+  # ─── Eventos do Billing ─────────────────────────────────────────────────────
+  orcamentoGerado:
+    address: billing.orcamento-gerado
+    messages:
+      OrcamentoGerado:
+        $ref: '#/components/messages/OrcamentoGerado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  orcamentoAprovado:
+    address: billing.orcamento-aprovado
+    messages:
+      OrcamentoAprovado:
+        $ref: '#/components/messages/OrcamentoAprovado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  orcamentoRejeitado:
+    address: billing.orcamento-rejeitado
+    messages:
+      OrcamentoRejeitado:
+        $ref: '#/components/messages/OrcamentoRejeitado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  orcamentoCancelado:
+    address: billing.orcamento-cancelado
+    messages:
+      OrcamentoCancelado:
+        $ref: '#/components/messages/OrcamentoCancelado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  cobrancaCriada:
+    address: billing.cobranca-criada
+    messages:
+      CobrancaCriada:
+        $ref: '#/components/messages/CobrancaCriada'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  pagamentoConfirmado:
+    address: billing.pagamento-confirmado
+    messages:
+      PagamentoConfirmado:
+        $ref: '#/components/messages/PagamentoConfirmado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  pagamentoRecusado:
+    address: billing.pagamento-recusado
+    messages:
+      PagamentoRecusado:
+        $ref: '#/components/messages/PagamentoRecusado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  pagamentoReembolsado:
+    address: billing.pagamento-reembolsado
+    messages:
+      PagamentoReembolsado:
+        $ref: '#/components/messages/PagamentoReembolsado'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+  reembolsoFalhou:
+    address: billing.reembolso-falhou
+    messages:
+      ReembolsoFalhou:
+        $ref: '#/components/messages/ReembolsoFalhou'
+    bindings:
+      $ref: '#/components/channelBindings/eventos'
+
+operations:
+  enviarReservarPecas:
+    action: send
+    channel:
+      $ref: '#/channels/reservarPecas'
+  enviarLiberarReserva:
+    action: send
+    channel:
+      $ref: '#/channels/liberarReserva'
+  enviarEnfileirarOS:
+    action: send
+    channel:
+      $ref: '#/channels/enfileirarOS'
+  enviarGerarOrcamento:
+    action: send
+    channel:
+      $ref: '#/channels/gerarOrcamento'
+  enviarCobrar:
+    action: send
+    channel:
+      $ref: '#/channels/cobrar'
+  enviarCancelarOrcamento:
+    action: send
+    channel:
+      $ref: '#/channels/cancelarOrcamento'
+  enviarReembolsar:
+    action: send
+    channel:
+      $ref: '#/channels/reembolsar'
+
+  receberPecasReservadas:
+    action: receive
+    channel:
+      $ref: '#/channels/pecasReservadas'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberReservaRecusada:
+    action: receive
+    channel:
+      $ref: '#/channels/reservaRecusada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberReservaLiberada:
+    action: receive
+    channel:
+      $ref: '#/channels/reservaLiberada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberOSEnfileirada:
+    action: receive
+    channel:
+      $ref: '#/channels/osEnfileirada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberEnfileiramentoRecusado:
+    action: receive
+    channel:
+      $ref: '#/channels/enfileiramentoRecusado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberDiagnosticoIniciado:
+    action: receive
+    channel:
+      $ref: '#/channels/diagnosticoIniciado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberExecucaoIniciada:
+    action: receive
+    channel:
+      $ref: '#/channels/execucaoIniciada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberExecucaoFinalizada:
+    action: receive
+    channel:
+      $ref: '#/channels/execucaoFinalizada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberOrcamentoGerado:
+    action: receive
+    channel:
+      $ref: '#/channels/orcamentoGerado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberOrcamentoAprovado:
+    action: receive
+    channel:
+      $ref: '#/channels/orcamentoAprovado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberOrcamentoRejeitado:
+    action: receive
+    channel:
+      $ref: '#/channels/orcamentoRejeitado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberOrcamentoCancelado:
+    action: receive
+    channel:
+      $ref: '#/channels/orcamentoCancelado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberCobrancaCriada:
+    action: receive
+    channel:
+      $ref: '#/channels/cobrancaCriada'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberPagamentoConfirmado:
+    action: receive
+    channel:
+      $ref: '#/channels/pagamentoConfirmado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberPagamentoRecusado:
+    action: receive
+    channel:
+      $ref: '#/channels/pagamentoRecusado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberPagamentoReembolsado:
+    action: receive
+    channel:
+      $ref: '#/channels/pagamentoReembolsado'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+  receberReembolsoFalhou:
+    action: receive
+    channel:
+      $ref: '#/channels/reembolsoFalhou'
+    bindings:
+      $ref: '#/components/operationBindings/consumoDoOrquestrador'
+
+components:
+  channelBindings:
+    comandos:
+      amqp:
+        is: routingKey
+        exchange:
+          name: oficina.comandos
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+    eventos:
+      amqp:
+        is: routingKey
+        exchange:
+          name: oficina.eventos
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+
+  operationBindings:
+    consumoDoOrquestrador:
+      amqp:
+        ack: true
+        deliveryMode: 2
+        bindingVersion: 0.3.0
+
+  messageTraits:
+    amqp:
+      headers:
+        $ref: '#/components/schemas/CabecalhosAMQP'
+      bindings:
+        amqp:
+          contentEncoding: utf-8
+          bindingVersion: 0.3.0
+
+  messages:
+    # Comandos
+    ReservarPecas:
+      name: ReservarPecas
+      title: Reservar peças da OS
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/ReservarPecas'
+    LiberarReserva:
+      name: LiberarReserva
+      title: Liberar a reserva da OS
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/LiberarReserva'
+    EnfileirarOS:
+      name: EnfileirarOS
+      title: Enfileirar a OS para execução
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/EnfileirarOS'
+    GerarOrcamento:
+      name: GerarOrcamento
+      title: Gerar e enviar o orçamento
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/GerarOrcamento'
+    Cobrar:
+      name: Cobrar
+      title: Cobrar o orçamento aprovado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/Cobrar'
+    CancelarOrcamento:
+      name: CancelarOrcamento
+      title: Cancelar o orçamento
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/CancelarOrcamento'
+    Reembolsar:
+      name: Reembolsar
+      title: Reembolsar o pagamento
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/Reembolsar'
+    # Eventos da Execução
+    PecasReservadas:
+      name: PecasReservadas
+      title: Peças reservadas e itens precificados
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/PecasReservadas'
+    ReservaRecusada:
+      name: ReservaRecusada
+      title: Reserva recusada
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/ReservaRecusada'
+    ReservaLiberada:
+      name: ReservaLiberada
+      title: Reserva liberada
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/ReservaLiberada'
+    OSEnfileirada:
+      name: OSEnfileirada
+      title: OS na fila de execução
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/OSEnfileirada'
+    EnfileiramentoRecusado:
+      name: EnfileiramentoRecusado
+      title: Enfileiramento recusado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/EnfileiramentoRecusado'
+    DiagnosticoIniciado:
+      name: DiagnosticoIniciado
+      title: Diagnóstico iniciado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/MudancaNaExecucao'
+    ExecucaoIniciada:
+      name: ExecucaoIniciada
+      title: Reparo iniciado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/MudancaNaExecucao'
+    ExecucaoFinalizada:
+      name: ExecucaoFinalizada
+      title: Reparo finalizado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/MudancaNaExecucao'
+    # Eventos do Billing
+    OrcamentoGerado:
+      name: OrcamentoGerado
+      title: Orçamento gerado e enviado ao cliente
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/OrcamentoGerado'
+    OrcamentoAprovado:
+      name: OrcamentoAprovado
+      title: Orçamento aprovado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/OrcamentoAprovado'
+    OrcamentoRejeitado:
+      name: OrcamentoRejeitado
+      title: Orçamento rejeitado ou expirado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/OrcamentoRejeitado'
+    OrcamentoCancelado:
+      name: OrcamentoCancelado
+      title: Orçamento cancelado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/OrcamentoCancelado'
+    CobrancaCriada:
+      name: CobrancaCriada
+      title: Cobrança criada no provedor
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/CobrancaCriada'
+    PagamentoConfirmado:
+      name: PagamentoConfirmado
+      title: Pagamento confirmado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/PagamentoConfirmado'
+    PagamentoRecusado:
+      name: PagamentoRecusado
+      title: Pagamento recusado, expirado ou cancelado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/PagamentoRecusado'
+    PagamentoReembolsado:
+      name: PagamentoReembolsado
+      title: Pagamento reembolsado
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/PagamentoReembolsado'
+    ReembolsoFalhou:
+      name: ReembolsoFalhou
+      title: Reembolso falhou
+      traits:
+        - $ref: '#/components/messageTraits/amqp'
+      payload:
+        $ref: '#/components/schemas/ReembolsoFalhou'
+
+  schemas:
+    # ─── Estruturas comuns ────────────────────────────────────────────────────
+    CabecalhosAMQP:
+      type: object
+      description: Cabeçalhos AMQP. `message_id`, `type` e `correlation_id` também vão nas propriedades da mensagem.
+      properties:
+        traceparent:
+          type: string
+          description: Contexto W3C Trace Context.
+        tracestate:
+          type: string
+        newrelic:
+          type: string
+          description: Cabeçalho proprietário do agente do New Relic, quando ativo.
+
+    Envelope:
+      type: object
+      required: [message_id, tipo, versao, saga_id, os_id, ocorrido_em, origem, payload]
+      additionalProperties: false
+      properties:
+        message_id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          description: Nome da mensagem, igual ao `name` em `components.messages`.
+        versao:
+          type: integer
+          const: 1
+        saga_id:
+          type: string
+          format: uuid
+        os_id:
+          type: string
+          format: uuid
+        ocorrido_em:
+          type: string
+          format: date-time
+        origem:
+          type: string
+          enum: [os-service, execucao-service, billing-service]
+        payload:
+          type: object
+
+    Dinheiro:
+      type: string
+      pattern: '^\d+\.\d{2}$'
+      examples: ['150.00']
+
+    ItemSolicitado:
+      type: object
+      required: [tipo, item_id, quantidade]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          enum: [SERVICO, PECA]
+        item_id:
+          type: string
+          format: uuid
+        quantidade:
+          type: integer
+          minimum: 1
+
+    ItemPrecificado:
+      type: object
+      required: [tipo, item_id, descricao, quantidade, preco_unitario, subtotal]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          enum: [SERVICO, PECA]
+        item_id:
+          type: string
+          format: uuid
+        descricao:
+          type: string
+        quantidade:
+          type: integer
+          minimum: 1
+        preco_unitario:
+          $ref: '#/components/schemas/Dinheiro'
+        subtotal:
+          $ref: '#/components/schemas/Dinheiro'
+
+    MotivoCompensacao:
+      type: string
+      description: Por que a Saga está desfazendo o passo.
+      enum:
+        - ORCAMENTO_REJEITADO
+        - ORCAMENTO_EXPIRADO
+        - PAGAMENTO_RECUSADO
+        - PAGAMENTO_EXPIRADO
+        - ENFILEIRAMENTO_RECUSADO
+        - PRAZO_ESGOTADO
+        - CANCELADA_PELA_OFICINA
+
+    # ─── Comandos ─────────────────────────────────────────────────────────────
+    ReservarPecas:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: ReservarPecas
+            payload:
+              type: object
+              required: [itens]
+              additionalProperties: false
+              properties:
+                itens:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/ItemSolicitado'
+
+    LiberarReserva:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: LiberarReserva
+            payload:
+              type: object
+              required: [motivo]
+              additionalProperties: false
+              properties:
+                motivo:
+                  $ref: '#/components/schemas/MotivoCompensacao'
+
+    EnfileirarOS:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: EnfileirarOS
+            payload:
+              type: object
+              required: [veiculo_id]
+              additionalProperties: false
+              properties:
+                veiculo_id:
+                  type: string
+                  format: uuid
+
+    GerarOrcamento:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: GerarOrcamento
+            payload:
+              type: object
+              required: [cliente, itens, valor_total]
+              additionalProperties: false
+              properties:
+                cliente:
+                  type: object
+                  required: [id, nome]
+                  additionalProperties: false
+                  description: Só o necessário para enviar o orçamento; CPF/CNPJ não trafega.
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    nome:
+                      type: string
+                    email:
+                      type: [string, 'null']
+                      format: email
+                    telefone:
+                      type: [string, 'null']
+                itens:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/ItemPrecificado'
+                valor_total:
+                  $ref: '#/components/schemas/Dinheiro'
+
+    Cobrar:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: Cobrar
+            payload:
+              type: object
+              required: [orcamento_id]
+              additionalProperties: false
+              properties:
+                orcamento_id:
+                  type: string
+
+    CancelarOrcamento:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: CancelarOrcamento
+            payload:
+              type: object
+              required: [motivo]
+              additionalProperties: false
+              properties:
+                motivo:
+                  $ref: '#/components/schemas/MotivoCompensacao'
+
+    Reembolsar:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: Reembolsar
+            payload:
+              type: object
+              required: [motivo]
+              additionalProperties: false
+              properties:
+                motivo:
+                  $ref: '#/components/schemas/MotivoCompensacao'
+
+    # ─── Eventos da Execução ──────────────────────────────────────────────────
+    PecasReservadas:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: PecasReservadas
+            payload:
+              type: object
+              required: [itens, valor_total]
+              additionalProperties: false
+              properties:
+                itens:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/ItemPrecificado'
+                valor_total:
+                  $ref: '#/components/schemas/Dinheiro'
+
+    ReservaRecusada:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: ReservaRecusada
+            payload:
+              type: object
+              required: [motivo, itens]
+              additionalProperties: false
+              properties:
+                motivo:
+                  type: string
+                  enum: [ESTOQUE_INSUFICIENTE, ITEM_INEXISTENTE]
+                itens:
+                  type: array
+                  description: Itens que impediram a reserva.
+                  items:
+                    type: object
+                    required: [item_id, detalhe]
+                    additionalProperties: false
+                    properties:
+                      item_id:
+                        type: string
+                        format: uuid
+                      detalhe:
+                        type: string
+
+    ReservaLiberada:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: ReservaLiberada
+            payload:
+              type: object
+              additionalProperties: false
+
+    OSEnfileirada:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: OSEnfileirada
+            payload:
+              type: object
+              required: [posicao]
+              additionalProperties: false
+              properties:
+                posicao:
+                  type: integer
+                  minimum: 1
+
+    EnfileiramentoRecusado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: EnfileiramentoRecusado
+            payload:
+              type: object
+              required: [motivo]
+              additionalProperties: false
+              properties:
+                motivo:
+                  type: string
+                  enum: [RESERVA_INEXISTENTE, ESTOQUE_INSUFICIENTE]
+
+    MudancaNaExecucao:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          description: Usado por DiagnosticoIniciado, ExecucaoIniciada e ExecucaoFinalizada.
+          properties:
+            tipo:
+              enum: [DiagnosticoIniciado, ExecucaoIniciada, ExecucaoFinalizada]
+            payload:
+              type: object
+              additionalProperties: false
+              properties:
+                observacao:
+                  type: [string, 'null']
+
+    # ─── Eventos do Billing ───────────────────────────────────────────────────
+    OrcamentoGerado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: OrcamentoGerado
+            payload:
+              type: object
+              required: [orcamento_id, valor_total, expira_em]
+              additionalProperties: false
+              properties:
+                orcamento_id:
+                  type: string
+                valor_total:
+                  $ref: '#/components/schemas/Dinheiro'
+                expira_em:
+                  type: string
+                  format: date-time
+
+    OrcamentoAprovado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: OrcamentoAprovado
+            payload:
+              type: object
+              required: [orcamento_id, aprovado_por]
+              additionalProperties: false
+              properties:
+                orcamento_id:
+                  type: string
+                aprovado_por:
+                  type: string
+                  enum: [CLIENTE, FUNCIONARIO]
+
+    OrcamentoRejeitado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: OrcamentoRejeitado
+            payload:
+              type: object
+              required: [orcamento_id, motivo]
+              additionalProperties: false
+              properties:
+                orcamento_id:
+                  type: string
+                motivo:
+                  type: string
+                  enum: [ORCAMENTO_REJEITADO, ORCAMENTO_EXPIRADO]
+
+    OrcamentoCancelado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: OrcamentoCancelado
+            payload:
+              type: object
+              required: [orcamento_id]
+              additionalProperties: false
+              properties:
+                orcamento_id:
+                  type: string
+
+    CobrancaCriada:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: CobrancaCriada
+            payload:
+              type: object
+              required: [pagamento_id, provedor, valor, qr_data, expira_em]
+              additionalProperties: false
+              properties:
+                pagamento_id:
+                  type: string
+                provedor:
+                  type: string
+                  enum: [MERCADO_PAGO, SIMULADO]
+                valor:
+                  $ref: '#/components/schemas/Dinheiro'
+                qr_data:
+                  type: string
+                  description: Conteúdo do QR Code dinâmico (Pix copia e cola).
+                expira_em:
+                  type: string
+                  format: date-time
+
+    PagamentoConfirmado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: PagamentoConfirmado
+            payload:
+              type: object
+              required: [pagamento_id, valor, pago_em]
+              additionalProperties: false
+              properties:
+                pagamento_id:
+                  type: string
+                valor:
+                  $ref: '#/components/schemas/Dinheiro'
+                pago_em:
+                  type: string
+                  format: date-time
+
+    PagamentoRecusado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: PagamentoRecusado
+            payload:
+              type: object
+              required: [pagamento_id, motivo]
+              additionalProperties: false
+              properties:
+                pagamento_id:
+                  type: string
+                motivo:
+                  type: string
+                  enum: [PAGAMENTO_RECUSADO, PAGAMENTO_EXPIRADO]
+
+    PagamentoReembolsado:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: PagamentoReembolsado
+            payload:
+              type: object
+              required: [pagamento_id, valor]
+              additionalProperties: false
+              properties:
+                pagamento_id:
+                  type: string
+                valor:
+                  $ref: '#/components/schemas/Dinheiro'
+
+    ReembolsoFalhou:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            tipo:
+              const: ReembolsoFalhou
+            payload:
+              type: object
+              required: [pagamento_id, detalhe]
+              additionalProperties: false
+              properties:
+                pagamento_id:
+                  type: string
+                detalhe:
+                  type: string
