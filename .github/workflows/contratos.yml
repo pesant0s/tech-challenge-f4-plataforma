@@ -1,0 +1,23 @@
+name: Contratos
+
+on:
+  push:
+    branches: [develop, main]
+    paths: [docs/contratos/**, .github/workflows/contratos.yml]
+  pull_request:
+    branches: [develop, main]
+    paths: [docs/contratos/**, .github/workflows/contratos.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  asyncapi:
+    name: Validar AsyncAPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npx -y @asyncapi/cli@2.16.4 validate docs/contratos/asyncapi.yaml --fail-severity=error

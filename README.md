@@ -38,6 +38,8 @@ Terraform que provisiona o **cluster Amazon EKS**, o **API Gateway**, o **ECR**,
 | ADR-005 a 008, 013 e 014 · cluster, CI e observabilidade | `tech-challenge-infra-k8s` · README |
 | ADR-009 a 012 · autenticação | `tech-challenge-auth-lambda` · README |
 | ADR-015 e 016 · padrão de comunicação e notificação | `tech-challenge-app` · README |
+| Contrato de mensagens da Saga (AsyncAPI) | `tech-challenge-f4-plataforma` · `docs/contratos/` |
+| ADR-017 a 024 · microsserviços, Saga, mensageria, bancos, pagamento e ambientes | `tech-challenge-f4-plataforma` · `docs/adr/` |
 | Swagger | `<url_api>/docs` na AWS · `http://localhost:8000/docs` localmente |
 | Coleção Postman | `tech-challenge-app` · `postman/oficina.postman_collection.json` |
 | Ambientes e deploy ativo | Só produção, justificado no `tech-challenge-app` · README, seção *Deploy*. O ambiente AWS é efêmero (ADR-013): a URL da API sai em `make output`, no `tech-challenge-infra-k8s`, enquanto a sessão dura |
