@@ -5,7 +5,7 @@ resource "aws_cloudwatch_log_group" "cluster" {
 
 resource "aws_eks_cluster" "principal" {
   name     = local.nome_cluster
-  role_arn = aws_iam_role.cluster.arn
+  role_arn = local.role_cluster_arn
   version  = var.versao_kubernetes
 
   vpc_config {
@@ -19,17 +19,16 @@ resource "aws_eks_cluster" "principal" {
     bootstrap_cluster_creator_admin_permissions = true
   }
 
-  enabled_cluster_log_types = ["api", "audit", "authenticator"]
+  enabled_cluster_log_types = ["api", "audit"]
 
   depends_on = [aws_iam_role_policy_attachment.cluster, aws_cloudwatch_log_group.cluster]
 
   tags = { Name = local.nome_cluster }
 }
 
-# Coloca os nodes no grupo cliente-db, o único que o RDS aceita (ADR-004).
 resource "aws_launch_template" "nodes" {
   name_prefix            = "${var.prefixo}-nodes-"
-  vpc_security_group_ids = [aws_eks_cluster.principal.vpc_config[0].cluster_security_group_id, local.sg_cliente_db]
+  vpc_security_group_ids = [aws_eks_cluster.principal.vpc_config[0].cluster_security_group_id]
 
   # Igual ao padrão do node group gerenciado: IMDSv2 com hop 2 para pods que leem metadados.
   metadata_options {
@@ -39,17 +38,17 @@ resource "aws_launch_template" "nodes" {
 
   tag_specifications {
     resource_type = "instance"
-    tags          = { Name = "${var.prefixo}-node", Project = "tech-challenge" }
+    tags          = { Name = "${var.prefixo}-node" }
   }
 }
 
 resource "aws_eks_node_group" "principal" {
   cluster_name    = aws_eks_cluster.principal.name
   node_group_name = "${var.prefixo}-nodes"
-  node_role_arn   = aws_iam_role.node.arn
+  node_role_arn   = local.role_node_arn
   subnet_ids      = local.subnets_publicas
-  capacity_type   = var.capacidade_spot ? "SPOT" : "ON_DEMAND"
-  instance_types  = var.tipos_instancia
+  capacity_type   = "ON_DEMAND"
+  instance_types  = ["t3.medium"]
 
   launch_template {
     id      = aws_launch_template.nodes.id

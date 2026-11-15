@@ -10,9 +10,17 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.14"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.31"
+    }
     newrelic = {
       source  = "newrelic/newrelic"
       version = "~> 3.97"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
     tls = {
       source  = "hashicorp/tls"
@@ -22,7 +30,7 @@ terraform {
 
   # Bucket e região vêm de -backend-config, pois dependem da conta de quem executa.
   backend "s3" {
-    key          = "infra-k8s/terraform.tfstate"
+    key          = "plataforma/terraform.tfstate"
     encrypt      = true
     use_lockfile = true
   }

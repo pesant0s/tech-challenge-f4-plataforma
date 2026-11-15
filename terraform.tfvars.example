@@ -1,18 +1,23 @@
 # Copie para terraform.tfvars e ajuste. O arquivo real não é versionado.
 
-# A conta vem de AWS_PROFILE (ou das credenciais no ambiente) — não fixe perfil aqui.
-regiao     = "us-east-1"
-# org_github vem do remote do git quando se usa `make`. Só defina se rodar
-# o terraform diretamente:
-# org_github = "seu-usuario-github"
-# id_dono_github = "12345678"   # gh api users/seu-usuario-github --jq .id
+# A conta vem de AWS_PROFILE (ou das credenciais no ambiente): não fixe perfil aqui.
+regiao = "us-east-1"
+# org_github e id_dono_github vêm do remote do git e do gh quando se usa `make`.
+# Só defina se rodar o terraform diretamente (obrigatórios, mesmo no laboratório):
+# org_github     = "seu-usuario-github"
+# id_dono_github = "12345678" # gh api users/seu-usuario-github --jq .id
+
+# Capacidade dos nodes (t3.medium On-Demand).
+# nodes_desejados = 3
+# nodes_minimo    = 2
+# nodes_maximo    = 4
 
 # Chave de licença do New Relic (painel → API keys → INGEST-LICENSE).
-# Deixe vazia para subir o cluster sem o agente.
+# Vazia, o agente não é instalado e o SSM recebe "desligado" em newrelic/license_key.
 newrelic_license_key = ""
 
 # Dashboards, alertas e monitor de uptime (painel → API keys → USER key, e o ID da conta).
-# Vazios, nada disso é criado.
+# Vazios, nada disso é criado. A integração AWS do New Relic só existe fora do laboratório.
 newrelic_api_key    = ""
 newrelic_account_id = ""
 # newrelic_regiao   = "EU"

@@ -5,7 +5,7 @@ variable "regiao" {
 }
 
 variable "perfil_aws" {
-  description = "Perfil local do AWS CLI; vazio no CI, que usa OIDC"
+  description = "Perfil local do AWS CLI; vazio no CI, que autentica por OIDC ou pelas credenciais da sessão"
   type        = string
   default     = null
 }
@@ -13,7 +13,29 @@ variable "perfil_aws" {
 variable "prefixo" {
   description = "Prefixo dos nomes de recurso"
   type        = string
-  default     = "tech-challenge"
+  default     = "tech-challenge-f4"
+}
+
+variable "cidr_vpc" {
+  description = "CIDR da VPC; /16 porque o VPC CNI atribui um IP a cada pod"
+  type        = string
+  default     = "10.0.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.cidr_vpc, 0))
+    error_message = "cidr_vpc precisa ser um bloco CIDR válido."
+  }
+}
+
+variable "zonas_disponibilidade" {
+  description = "AZs usadas; o EKS e o RDS dos serviços exigem ao menos duas"
+  type        = list(string)
+  default     = ["us-east-1a", "us-east-1b"]
+
+  validation {
+    condition     = length(var.zonas_disponibilidade) >= 2
+    error_message = "São necessárias ao menos duas zonas de disponibilidade."
+  }
 }
 
 variable "versao_kubernetes" {
@@ -22,22 +44,10 @@ variable "versao_kubernetes" {
   default     = "1.36"
 }
 
-variable "tipos_instancia" {
-  description = "Tipos aceitos para os nodes; mais de um aumenta a chance de capacidade Spot"
-  type        = list(string)
-  default     = ["t3.medium", "t3a.medium"]
-}
-
-variable "capacidade_spot" {
-  description = "Nodes em Spot, cerca de 70% mais baratos"
-  type        = bool
-  default     = true
-}
-
 variable "nodes_desejados" {
   description = "Quantidade inicial de nodes"
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "nodes_minimo" {
@@ -53,7 +63,7 @@ variable "nodes_maximo" {
 }
 
 variable "org_github" {
-  description = "Dono dos repositórios no GitHub; restringe quem assume a role de deploy"
+  description = "Dono dos repositórios no GitHub; restringe quem assume a role de deploy (fora do laboratório)"
   type        = string
 
   validation {
@@ -76,10 +86,11 @@ variable "repos_github" {
   description = "Repositórios autorizados a assumir a role via OIDC"
   type        = list(string)
   default = [
-    "tech-challenge-app",
-    "tech-challenge-infra-k8s",
-    "tech-challenge-infra-db",
-    "tech-challenge-auth-lambda",
+    "tech-challenge-f4-plataforma",
+    "tech-challenge-f4-os-service",
+    "tech-challenge-f4-execucao-service",
+    "tech-challenge-f4-billing-service",
+    "tech-challenge-f4-auth-lambda",
   ]
 }
 
@@ -118,5 +129,5 @@ variable "email_alertas" {
 variable "newrelic_cluster_name" {
   description = "Nome do cluster no New Relic"
   type        = string
-  default     = "tech-challenge-eks"
+  default     = "tech-challenge-f4-eks"
 }

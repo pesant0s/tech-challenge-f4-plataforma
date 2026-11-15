@@ -1,11 +1,13 @@
 # Dashboards, alertas, monitor de uptime e métricas da Lambda no New Relic (ADR-014).
 locals {
   newrelic_ativo = nonsensitive(var.newrelic_api_key != "") && var.newrelic_account_id != ""
-  email_ativo    = local.newrelic_ativo && var.email_alertas != ""
-  monitor        = "${var.prefixo}-api-health"
-  logs_os        = "FROM Log WHERE evento = 'os_status'"
-  app            = "FROM Transaction WHERE appName = 'tech-challenge-oficina'"
-  pods           = "FROM K8sContainerSample WHERE clusterName = '${var.newrelic_cluster_name}' AND namespaceName = 'oficina'"
+  # A integração AWS exige uma role própria, que o laboratório não permite criar.
+  newrelic_aws = local.newrelic_ativo && !local.laboratorio
+  email_ativo  = local.newrelic_ativo && var.email_alertas != ""
+  monitor      = "${var.prefixo}-api-health"
+  logs_os      = "FROM Log WHERE evento = 'os_status'"
+  app          = "FROM Transaction WHERE appName = 'tech-challenge-oficina'"
+  pods         = "FROM K8sContainerSample WHERE clusterName = '${var.newrelic_cluster_name}' AND namespaceName = 'oficina'"
 
   alertas = {
     falha_os = {
@@ -261,7 +263,7 @@ resource "newrelic_workflow" "email" {
 
 # 754728514883 é a conta AWS das integrações de nuvem do New Relic; o ExternalId é o ID da conta dele.
 resource "aws_iam_role" "newrelic" {
-  count = local.newrelic_ativo ? 1 : 0
+  count = local.newrelic_aws ? 1 : 0
   name  = "${var.prefixo}-newrelic"
 
   assume_role_policy = jsonencode({
@@ -276,13 +278,13 @@ resource "aws_iam_role" "newrelic" {
 }
 
 resource "aws_iam_role_policy_attachment" "newrelic" {
-  count      = local.newrelic_ativo ? 1 : 0
+  count      = local.newrelic_aws ? 1 : 0
   role       = aws_iam_role.newrelic[0].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
 resource "newrelic_cloud_aws_link_account" "principal" {
-  count                  = local.newrelic_ativo ? 1 : 0
+  count                  = local.newrelic_aws ? 1 : 0
   name                   = var.prefixo
   arn                    = aws_iam_role.newrelic[0].arn
   metric_collection_mode = "PULL"
@@ -291,7 +293,7 @@ resource "newrelic_cloud_aws_link_account" "principal" {
 }
 
 resource "newrelic_cloud_aws_integrations" "principal" {
-  count             = local.newrelic_ativo ? 1 : 0
+  count             = local.newrelic_aws ? 1 : 0
   linked_account_id = newrelic_cloud_aws_link_account.principal[0].id
 
   lambda {

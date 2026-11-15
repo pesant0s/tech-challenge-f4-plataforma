@@ -35,6 +35,5 @@ resource "helm_release" "newrelic" {
     value = "true"
   }
 
-
   depends_on = [aws_eks_node_group.principal, aws_eks_addon.essenciais]
 }

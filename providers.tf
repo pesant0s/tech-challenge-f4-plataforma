@@ -4,12 +4,20 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "tech-challenge"
-      Fase        = "03"
-      Repositorio = "tech-challenge-infra-k8s"
+      Project     = "tech-challenge-f4"
+      Fase        = "04"
+      Repositorio = "tech-challenge-f4-plataforma"
       ManagedBy   = "terraform"
     }
   }
+}
+
+locals {
+  # Mesmo token para os providers helm e kubernetes.
+  args_token_eks = concat(
+    ["eks", "get-token", "--cluster-name", aws_eks_cluster.principal.name, "--region", var.regiao],
+    var.perfil_aws == null ? [] : ["--profile", var.perfil_aws],
+  )
 }
 
 provider "helm" {
@@ -20,11 +28,19 @@ provider "helm" {
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
-      args = concat(
-        ["eks", "get-token", "--cluster-name", aws_eks_cluster.principal.name, "--region", var.regiao],
-        var.perfil_aws == null ? [] : ["--profile", var.perfil_aws],
-      )
+      args        = local.args_token_eks
     }
+  }
+}
+
+provider "kubernetes" {
+  host                   = aws_eks_cluster.principal.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.principal.certificate_authority[0].data)
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = local.args_token_eks
   }
 }
 
