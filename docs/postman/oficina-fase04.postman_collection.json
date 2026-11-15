@@ -1,0 +1,2023 @@
+{
+  "info": {
+    "name": "Oficina - Fase 04 - Saga pelos três serviços",
+    "description": "Percorre a Saga da oficina pelo OS Service, a Execução, o Billing e a Lambda de CPF: caminho feliz, compensações e regras de acesso. Na nuvem as quatro URLs são o endpoint do API Gateway; localmente são as portas 8001 a 8004. Execução: newman run oficina-fase04.postman_collection.json -e local.postman_environment.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Preparação",
+      "description": "Cria o serviço, a peça, o cliente, o veículo e obtém os tokens usados nos cenários.",
+      "item": [
+        {
+          "name": "Obter token de funcionário",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{osUrl}}/auth/token",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{adminUsuario}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminSenha}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const corpo = pm.response.json();",
+                  "pm.test('Devolve token do tipo bearer', function () {",
+                  "    pm.expect(corpo.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(corpo.token_type).to.eql('bearer');",
+                  "});",
+                  "pm.collectionVariables.set('tokenFuncionario', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar serviço no catálogo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/catalogo/servicos",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "catalogo",
+                "servicos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"{{nomeServico}}\",\n  \"descricao\": \"Serviço criado pela coleção de testes\",\n  \"preco\": 150.0,\n  \"tempo_estimado_minutos\": 60\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('sufixo', String(Date.now()));",
+                  "pm.variables.set('nomeServico', 'Revisão completa ' + pm.collectionVariables.get('sufixo'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const servico = pm.response.json();",
+                  "pm.test('Serviço criado com o preço informado', function () {",
+                  "    pm.expect(servico.id).to.be.a('string');",
+                  "    pm.expect(Number(servico.preco)).to.eql(150);",
+                  "});",
+                  "pm.collectionVariables.set('servicoId', pm.response.json().id);",
+                  "pm.collectionVariables.set('precoServico', '150');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar peça com estoque 10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/estoque/pecas",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "estoque",
+                "pecas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"{{nomePeca}}\",\n  \"descricao\": \"Peça criada pela coleção de testes\",\n  \"preco\": 25.5,\n  \"quantidade\": 10,\n  \"estoque_minimo\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('nomePeca', 'Filtro de óleo ' + pm.collectionVariables.get('sufixo'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const peca = pm.response.json();",
+                  "pm.test('Peça criada com estoque 10 e nada reservado', function () {",
+                  "    pm.expect(peca.id).to.be.a('string');",
+                  "    pm.expect(peca.quantidade).to.eql(10);",
+                  "    pm.expect(peca.reservada).to.eql(0);",
+                  "    pm.expect(peca.disponivel).to.eql(10);",
+                  "});",
+                  "pm.collectionVariables.set('pecaId', pm.response.json().id);",
+                  "pm.collectionVariables.set('precoPeca', '25.5');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/cadastro/clientes",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "cadastro",
+                "clientes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Cliente Teste {{sufixo}}\",\n  \"cpf_cnpj\": \"{{cpf}}\",\n  \"email\": \"cliente.{{sufixo}}@exemplo.com\",\n  \"telefone\": \"11999998888\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function gerarCpf() {",
+                  "    const d = [];",
+                  "    for (let i = 0; i < 9; i++) d.push(Math.floor(Math.random() * 10));",
+                  "    if (d.every(function (x) { return x === d[0]; })) d[8] = (d[0] + 1) % 10;",
+                  "    function dv(base) {",
+                  "        let soma = 0;",
+                  "        for (let i = 0; i < base.length; i++) soma += base[i] * (base.length + 1 - i);",
+                  "        const r = soma % 11;",
+                  "        return r < 2 ? 0 : 11 - r;",
+                  "    }",
+                  "    d.push(dv(d));",
+                  "    d.push(dv(d));",
+                  "    return d.join('');",
+                  "}",
+                  "pm.collectionVariables.set('cpf', gerarCpf());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const cliente = pm.response.json();",
+                  "pm.test('Cliente criado e ativo, com o CPF só em dígitos', function () {",
+                  "    pm.expect(cliente.id).to.be.a('string');",
+                  "    pm.expect(cliente.cpf_cnpj).to.eql(pm.collectionVariables.get('cpf'));",
+                  "    pm.expect(cliente.ativo).to.be.true;",
+                  "});",
+                  "pm.collectionVariables.set('clienteId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar veículo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/cadastro/veiculos",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "cadastro",
+                "veiculos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placa\": \"{{placa}}\",\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla\",\n  \"ano\": \"2022\",\n  \"cliente_id\": \"{{clienteId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function letra() { return String.fromCharCode(65 + Math.floor(Math.random() * 26)); }",
+                  "function digito() { return String(Math.floor(Math.random() * 10)); }",
+                  "pm.collectionVariables.set('placa', letra() + letra() + letra() + '-' + digito() + digito() + digito() + digito());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const veiculo = pm.response.json();",
+                  "pm.test('Veículo vinculado ao cliente', function () {",
+                  "    pm.expect(veiculo.id).to.be.a('string');",
+                  "    pm.expect(veiculo.placa).to.eql(pm.collectionVariables.get('placa'));",
+                  "    pm.expect(veiculo.cliente_id).to.eql(pm.collectionVariables.get('clienteId'));",
+                  "});",
+                  "pm.collectionVariables.set('veiculoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter token do cliente pela Lambda de CPF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{authUrl}}/auth/cpf",
+              "host": [
+                "{{authUrl}}"
+              ],
+              "path": [
+                "auth",
+                "cpf"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpf}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const corpo = pm.response.json();",
+                  "pm.test('Token do cliente emitido para o cliente cadastrado', function () {",
+                  "    pm.expect(corpo.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(corpo.token_type).to.eql('bearer');",
+                  "    pm.expect(corpo.cliente.id).to.eql(pm.collectionVariables.get('clienteId'));",
+                  "});",
+                  "pm.collectionVariables.set('tokenCliente', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Caminho feliz",
+      "description": "Abre a OS, aprova o orçamento, paga, executa, finaliza e entrega, conferindo o estoque no fim.",
+      "item": [
+        {
+          "name": "Abrir OS com 1 serviço e 2 peças",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"veiculo_id\": \"{{veiculoId}}\",\n  \"servicos\": [\n    {\n      \"servico_id\": \"{{servicoId}}\",\n      \"quantidade\": 1\n    }\n  ],\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{pecaId}}\",\n      \"quantidade\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const os = pm.response.json();",
+                  "pm.test('OS criada com id', function () { pm.expect(os.id).to.be.a('string'); });",
+                  "pm.test('OS nasce ABERTA com a Saga em andamento', function () {",
+                  "    pm.expect(os.status).to.eql('ABERTA');",
+                  "    pm.expect(os.saga.estado).to.eql('EM_ANDAMENTO');",
+                  "});",
+                  "pm.test('OS traz o serviço e as duas peças pedidas', function () {",
+                  "    pm.expect(os.itens.length).to.eql(2);",
+                  "});",
+                  "pm.collectionVariables.set('osId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em AGUARDANDO_APROVACAO",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'AGUARDANDO_APROVACAO'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS aguarda a aprovação do orçamento (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir o orçamento como cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const orc = pm.response.json();",
+                  "pm.test('Orçamento da OS foi gerado e aguarda decisão', function () {",
+                  "    pm.expect(orc.os_id).to.eql(pm.collectionVariables.get('osId'));",
+                  "    pm.expect(orc.estado).to.eql('GERADO');",
+                  "});",
+                  "pm.test('Valor total = serviço + 2 x peça', function () {",
+                  "    const esperado = Number(pm.collectionVariables.get('precoServico')) + 2 * Number(pm.collectionVariables.get('precoPeca'));",
+                  "    pm.expect(Number(orc.valor_total)).to.be.closeTo(esperado, 0.001);",
+                  "});",
+                  "pm.test('Orçamento tem os dois itens e o cliente titular', function () {",
+                  "    pm.expect(orc.itens.length).to.eql(2);",
+                  "    pm.expect(orc.cliente).to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprovar o orçamento como cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}/aprovar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const orc = pm.response.json();",
+                  "pm.test('Orçamento aprovado pelo cliente', function () {",
+                  "    pm.expect(orc.estado).to.eql('APROVADO');",
+                  "    pm.expect(orc.aprovado_por).to.eql('CLIENTE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar o QR de pagamento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.pagamento && !!corpo.pagamento.qr_data; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Pagamento gerado com QR (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});",
+                  "",
+                  "if (pronto) {",
+                  "    pm.test('Pagamento pendente com o valor do orçamento', function () {",
+                  "        pm.expect(corpo.pagamento.estado).to.eql('PENDENTE');",
+                  "        pm.expect(Number(corpo.pagamento.valor)).to.eql(Number(corpo.valor_total));",
+                  "        pm.expect(corpo.pagamento.provedor).to.eql('SIMULADO');",
+                  "    });",
+                  "    pm.collectionVariables.set('pagamentoId', corpo.pagamento.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprovar o pagamento no simulador como funcionário",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/simulador/pagamentos/{{pagamentoId}}/aprovar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "simulador",
+                "pagamentos",
+                "{{pagamentoId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em NA_FILA após a conciliação",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'NA_FILA'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS entrou na fila de execução (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chamar a próxima ordem da fila",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/execucao/fila/proxima",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "execucao",
+                "fila",
+                "proxima"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "const ordem = pm.response.json();",
+                  "pm.test('Ordem chamada é a da OS e está em diagnóstico', function () {",
+                  "    pm.expect(ordem.os_id).to.eql(pm.collectionVariables.get('osId'));",
+                  "    pm.expect(ordem.status).to.eql('EM_DIAGNOSTICO');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Iniciar o reparo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/execucao/os/{{osId}}/reparo",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "execucao",
+                "os",
+                "{{osId}}",
+                "reparo"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observacao\": \"Reparo iniciado pela coleção\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Ordem em execução', function () { pm.expect(pm.response.json().status).to.eql('EM_EXECUCAO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Finalizar a execução",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/execucao/os/{{osId}}/finalizacao",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "execucao",
+                "os",
+                "{{osId}}",
+                "finalizacao"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observacao\": \"Serviço concluído\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Ordem finalizada', function () { pm.expect(pm.response.json().status).to.eql('FINALIZADA'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em FINALIZADA com a Saga concluída",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'FINALIZADA' && corpo.saga && corpo.saga.estado === 'CONCLUIDA'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS finalizada e Saga CONCLUIDA (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});",
+                  "",
+                  "if (pronto) {",
+                  "    pm.test('Saga concluída sem compensações', function () {",
+                  "        pm.expect(corpo.saga.estado).to.eql('CONCLUIDA');",
+                  "        pm.expect(corpo.saga.compensacoes).to.be.empty;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Entregar o veículo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}/entregar",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}",
+                "entregar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('OS entregue', function () { pm.expect(pm.response.json().status).to.eql('ENTREGUE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir o estoque após a entrega: 8 em estoque e 0 reservada",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/estoque/pecas/{{pecaId}}",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "estoque",
+                "pecas",
+                "{{pecaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.quantidade === 8 && corpo.reservada === 0; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Estoque com 8 unidades e nenhuma reservada (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Compensação - orçamento rejeitado",
+      "description": "O cliente rejeita o orçamento e a Saga devolve a reserva de peças.",
+      "item": [
+        {
+          "name": "Abrir OS para rejeitar o orçamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"veiculo_id\": \"{{veiculoId}}\",\n  \"servicos\": [\n    {\n      \"servico_id\": \"{{servicoId}}\",\n      \"quantidade\": 1\n    }\n  ],\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{pecaId}}\",\n      \"quantidade\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const os = pm.response.json();",
+                  "pm.test('OS criada com id', function () { pm.expect(os.id).to.be.a('string'); });",
+                  "pm.test('OS nasce ABERTA com a Saga em andamento', function () {",
+                  "    pm.expect(os.status).to.eql('ABERTA');",
+                  "    pm.expect(os.saga.estado).to.eql('EM_ANDAMENTO');",
+                  "});",
+                  "pm.test('OS traz o serviço e as duas peças pedidas', function () {",
+                  "    pm.expect(os.itens.length).to.eql(2);",
+                  "});",
+                  "pm.collectionVariables.set('osId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em AGUARDANDO_APROVACAO antes de rejeitar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'AGUARDANDO_APROVACAO'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS aguarda a aprovação do orçamento (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rejeitar o orçamento como cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}/rejeitar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}",
+                "rejeitar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Orçamento rejeitado', function () { pm.expect(pm.response.json().estado).to.eql('REJEITADO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em NEGADA com a Saga compensada",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'NEGADA' && corpo.saga && corpo.saga.estado === 'COMPENSADA'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS NEGADA e Saga COMPENSADA (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});",
+                  "",
+                  "if (pronto) {",
+                  "    pm.test('Saga compensada pelo motivo da rejeição, sem compensação pendente', function () {",
+                  "        pm.expect(corpo.saga.motivo).to.eql('ORCAMENTO_REJEITADO');",
+                  "        pm.expect(corpo.saga.compensacoes).to.be.empty;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir que a reserva voltou após a rejeição",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/estoque/pecas/{{pecaId}}",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "estoque",
+                "pecas",
+                "{{pecaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.quantidade === 8 && corpo.reservada === 0; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Reserva devolvida: 8 em estoque e 0 reservada (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Compensação - cancelamento de OS já paga",
+      "description": "A oficina cancela uma OS cujo pagamento acabou de ser aprovado: o Billing reembolsa e a reserva volta.",
+      "item": [
+        {
+          "name": "Abrir OS para cancelar depois de paga",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cliente_id\": \"{{clienteId}}\",\n  \"veiculo_id\": \"{{veiculoId}}\",\n  \"servicos\": [\n    {\n      \"servico_id\": \"{{servicoId}}\",\n      \"quantidade\": 1\n    }\n  ],\n  \"pecas\": [\n    {\n      \"peca_id\": \"{{pecaId}}\",\n      \"quantidade\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "",
+                  "const os = pm.response.json();",
+                  "pm.test('OS criada com id', function () { pm.expect(os.id).to.be.a('string'); });",
+                  "pm.test('OS nasce ABERTA com a Saga em andamento', function () {",
+                  "    pm.expect(os.status).to.eql('ABERTA');",
+                  "    pm.expect(os.saga.estado).to.eql('EM_ANDAMENTO');",
+                  "});",
+                  "pm.test('OS traz o serviço e as duas peças pedidas', function () {",
+                  "    pm.expect(os.itens.length).to.eql(2);",
+                  "});",
+                  "pm.collectionVariables.set('osId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em AGUARDANDO_APROVACAO antes de aprovar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'AGUARDANDO_APROVACAO'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS aguarda a aprovação do orçamento (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprovar o orçamento da OS a cancelar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}/aprovar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Orçamento aprovado', function () { pm.expect(pm.response.json().estado).to.eql('APROVADO'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar o QR de pagamento da OS a cancelar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.pagamento && !!corpo.pagamento.qr_data; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Pagamento gerado com QR (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});",
+                  "if (pronto) { pm.collectionVariables.set('pagamentoId', corpo.pagamento.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprovar o pagamento no simulador (OS a cancelar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/simulador/pagamentos/{{pagamentoId}}/aprovar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "simulador",
+                "pagamentos",
+                "{{pagamentoId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 204', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar a OS pela oficina logo após o pagamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}/cancelar",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}",
+                "cancelar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Cancelamento aceito e Saga em compensação', function () {",
+                  "    const os = pm.response.json();",
+                  "    pm.expect(os.id).to.eql(pm.collectionVariables.get('osId'));",
+                  "    pm.expect(os.saga.estado).to.be.oneOf(['COMPENSANDO', 'COMPENSADA']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aguardar OS em CANCELADA com a Saga compensada",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os/{{osId}}",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.status === 'CANCELADA' && corpo.saga && corpo.saga.estado === 'COMPENSADA'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('OS CANCELADA e Saga COMPENSADA (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir o pagamento REEMBOLSADO no Billing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.pagamento && corpo.pagamento.estado === 'REEMBOLSADO'; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Pagamento REEMBOLSADO (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});",
+                  "",
+                  "if (pronto) {",
+                  "    pm.test('Orçamento da OS cancelada ficou CANCELADO', function () { pm.expect(corpo.estado).to.eql('CANCELADO'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir que a reserva voltou após o cancelamento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{execucaoUrl}}/estoque/pecas/{{pecaId}}",
+              "host": [
+                "{{execucaoUrl}}"
+              ],
+              "path": [
+                "estoque",
+                "pecas",
+                "{{pecaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consulta responde 200', function () { pm.response.to.have.status(200); });",
+                  "const corpo = pm.response.json();",
+                  "const pronto = (function (corpo) { return corpo.quantidade === 8 && corpo.reservada === 0; })(corpo);",
+                  "const tentativas = parseInt(pm.collectionVariables.get('tentativas') || '0', 10);",
+                  "if (!pronto && tentativas < 40) {",
+                  "    pm.collectionVariables.set('tentativas', String(tentativas + 1));",
+                  "    setTimeout(function () {}, 2000);",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    return;",
+                  "}",
+                  "pm.collectionVariables.unset('tentativas');",
+                  "pm.test('Reserva devolvida: 8 em estoque e 0 reservada (em até 40 tentativas)', function () {",
+                  "    pm.expect(pronto, 'condição não atingida após 40 tentativas; último corpo: ' + JSON.stringify(corpo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Regras de acesso",
+      "description": "Isolamento entre clientes, exigência de token e perfis.",
+      "item": [
+        {
+          "name": "Cadastrar o segundo cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFuncionario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{osUrl}}/cadastro/clientes",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "cadastro",
+                "clientes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Outro Cliente {{sufixo}}\",\n  \"cpf_cnpj\": \"{{cpfOutro}}\",\n  \"email\": \"outro.{{sufixo}}@exemplo.com\",\n  \"telefone\": \"11988887777\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function gerarCpf() {",
+                  "    const d = [];",
+                  "    for (let i = 0; i < 9; i++) d.push(Math.floor(Math.random() * 10));",
+                  "    if (d.every(function (x) { return x === d[0]; })) d[8] = (d[0] + 1) % 10;",
+                  "    function dv(base) {",
+                  "        let soma = 0;",
+                  "        for (let i = 0; i < base.length; i++) soma += base[i] * (base.length + 1 - i);",
+                  "        const r = soma % 11;",
+                  "        return r < 2 ? 0 : 11 - r;",
+                  "    }",
+                  "    d.push(dv(d));",
+                  "    d.push(dv(d));",
+                  "    return d.join('');",
+                  "}",
+                  "pm.collectionVariables.set('cpfOutro', gerarCpf());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Segundo cliente criado', function () { pm.expect(pm.response.json().id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('clienteOutroId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obter token do segundo cliente pela Lambda de CPF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{authUrl}}/auth/cpf",
+              "host": [
+                "{{authUrl}}"
+              ],
+              "path": [
+                "auth",
+                "cpf"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpfOutro}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "pm.test('Token emitido para o segundo cliente', function () {",
+                  "    pm.expect(pm.response.json().cliente.id).to.eql(pm.collectionVariables.get('clienteOutroId'));",
+                  "});",
+                  "pm.collectionVariables.set('tokenClienteOutro', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Outro cliente não vê o orçamento alheio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenClienteOutro}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/orcamentos/{{osId}}",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "orcamentos",
+                "{{osId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar OS sem token é negado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{osUrl}}/atendimento/os",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "atendimento",
+                "os"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente não acessa o simulador de pagamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{billingUrl}}/billing/simulador/pagamentos/{{pagamentoId}}/aprovar",
+              "host": [
+                "{{billingUrl}}"
+              ],
+              "path": [
+                "billing",
+                "simulador",
+                "pagamentos",
+                "{{pagamentoId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lambda rejeita CPF inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{authUrl}}/auth/cpf",
+              "host": [
+                "{{authUrl}}"
+              ],
+              "path": [
+                "auth",
+                "cpf"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"111.111.111-11\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Mensagem explica o documento inválido', function () { pm.expect(pm.response.json().detail).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "osUrl",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "execucaoUrl",
+      "value": "http://localhost:8002"
+    },
+    {
+      "key": "billingUrl",
+      "value": "http://localhost:8003"
+    },
+    {
+      "key": "authUrl",
+      "value": "http://localhost:8004"
+    },
+    {
+      "key": "adminUsuario",
+      "value": "admin"
+    },
+    {
+      "key": "adminSenha",
+      "value": ""
+    },
+    {
+      "key": "tokenFuncionario",
+      "value": ""
+    },
+    {
+      "key": "tokenCliente",
+      "value": ""
+    },
+    {
+      "key": "tokenClienteOutro",
+      "value": ""
+    },
+    {
+      "key": "sufixo",
+      "value": ""
+    },
+    {
+      "key": "servicoId",
+      "value": ""
+    },
+    {
+      "key": "pecaId",
+      "value": ""
+    },
+    {
+      "key": "precoServico",
+      "value": ""
+    },
+    {
+      "key": "precoPeca",
+      "value": ""
+    },
+    {
+      "key": "cpf",
+      "value": ""
+    },
+    {
+      "key": "cpfOutro",
+      "value": ""
+    },
+    {
+      "key": "placa",
+      "value": ""
+    },
+    {
+      "key": "clienteId",
+      "value": ""
+    },
+    {
+      "key": "clienteOutroId",
+      "value": ""
+    },
+    {
+      "key": "veiculoId",
+      "value": ""
+    },
+    {
+      "key": "osId",
+      "value": ""
+    },
+    {
+      "key": "pagamentoId",
+      "value": ""
+    },
+    {
+      "key": "tentativas",
+      "value": ""
+    }
+  ]
+}
