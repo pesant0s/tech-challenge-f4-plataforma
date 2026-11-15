@@ -1,7 +1,7 @@
 name: Terraform
 
-# Plan e apply só na main e com AMBIENTE_ATIVO=true (ADR-007 e ADR-013, no tech-challenge-infra-k8s).
-# então nenhum pipeline recria o cluster do zero: ligar cobrança é sempre `make up`.
+# Plan e apply só na main e com AMBIENTE_ATIVO=true (ADR-007 e ADR-013): nenhum pipeline
+# recria o cluster do zero, ligar a cobrança é sempre `make up`.
 on:
   push:
     branches: [main]
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: terraform-infra-k8s
+  group: terraform-f4-plataforma
   cancel-in-progress: false
 
 env:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - run: terraform fmt -check -recursive -diff
@@ -57,30 +57,42 @@ jobs:
       TF_VAR_newrelic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
       TF_VAR_newrelic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
       TF_VAR_email_alertas: ${{ vars.EMAIL_ALERTAS }}
+      # Com AWS_ROLE_ARN vale o OIDC; sem ele, as credenciais da sessão do laboratório.
+      TEM_ROLE: ${{ secrets.AWS_ROLE_ARN != '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Autenticar na AWS via OIDC
-        id: aws
+        id: oidc
+        if: env.TEM_ROLE == 'true'
         continue-on-error: true
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Autenticar na AWS com as credenciais da sessão
+        if: env.TEM_ROLE != 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Explicar falha de autenticação
-        if: steps.aws.outcome == 'failure'
+        if: steps.oidc.outcome == 'failure'
         run: |
-          echo "::error::AMBIENTE_ATIVO=true, mas a role não pôde ser assumida: o cluster foi destruído sem 'make down' ou falta o secret AWS_ROLE_ARN."
+          echo "::error::AMBIENTE_ATIVO=true, mas a role não pôde ser assumida: o ambiente foi destruído sem 'make down' ou o secret AWS_ROLE_ARN está desatualizado."
           exit 1
 
       - name: Init
         run: |
           terraform init -input=false \
-            -backend-config="bucket=tech-challenge-tfstate-$(aws sts get-caller-identity --query Account --output text)" \
+            -backend-config="bucket=tech-challenge-f4-tfstate-$(aws sts get-caller-identity --query Account --output text)" \
             -backend-config="region=$AWS_REGION"
 
       - name: Plan
