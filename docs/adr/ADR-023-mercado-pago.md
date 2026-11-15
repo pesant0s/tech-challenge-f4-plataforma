@@ -36,8 +36,11 @@ ambiente é efêmero e precisa ser reproduzível por quem não tem conta no Merc
 
 ## Consequências
 
-- A documentação do Mercado Pago diverge no método e no caminho de cancelamento e reembolso. O adapter
-  é validado no sandbox antes de ser dado como pronto.
+- A documentação do Mercado Pago diverge no método e no caminho de cancelamento e reembolso. No sandbox
+  (14/11/2026) valeram `POST /v1/orders/{id}/cancel` (409 se já cancelado) e `POST /v1/orders/{id}/refund`
+  (só para pedido `processed`). A mesma `X-Idempotency-Key` com o mesmo corpo devolve o mesmo pedido; com
+  corpo diferente, 409. Por isso o corpo da cobrança é determinístico.
+- O caixa exige `external_id` só com letras e números e `store_id` como texto.
 - O QR expira (15 minutos por padrão). A expiração vira `PagamentoRecusado` com motivo
   `PAGAMENTO_EXPIRADO` e dispara a compensação.
 - O access token e a chave do webhook são segredos do Billing. Sem eles, o serviço sobe com o adapter
