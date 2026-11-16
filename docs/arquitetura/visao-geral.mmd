@@ -1,0 +1,48 @@
+%%{init: {"theme": "neutral", "flowchart": {"nodeSpacing": 40, "rankSpacing": 80, "curve": "basis", "htmlLabels": true}}}%%
+flowchart TB
+  U["Funcionário / Cliente"]
+  MP["Mercado Pago<br/>Orders API · QR dinâmico"]
+  NR["New Relic<br/>APM · logs · traces · dashboards"]
+  GH["GitHub Actions<br/>testes · SonarQube · deploy"]
+  subgraph AWS["AWS · us-east-1"]
+    APIGW["API Gateway HTTP<br/>rota por prefixo"]
+    L["Lambda tech-challenge-f4-auth<br/>POST /auth/cpf"]
+    ECR["ECR · um por serviço"]
+    SSM["SSM Parameter Store<br/>/tech-challenge-f4/*"]
+    subgraph VPC["VPC"]
+      NLB["NLB interno<br/>80 · 8081 · 8082"]
+      subgraph EKS["EKS · 3 nós t3.medium"]
+        OS["OS Service<br/>orquestrador da Saga"]
+        EX["Execução e Produção"]
+        BI["Billing"]
+        RMQ["RabbitMQ<br/>namespace mensageria"]
+        MDB[("MongoDB rs0<br/>namespace billing-service")]
+      end
+      RDS1[("RDS PostgreSQL<br/>os-service")]
+      RDS2[("RDS PostgreSQL<br/>execucao-service")]
+    end
+  end
+  U --> APIGW
+  APIGW -->|"POST /auth/cpf"| L
+  APIGW -->|"VPC Link"| NLB
+  L -->|"/interno/clientes/autenticar"| NLB
+  NLB -->|"NodePort 30080"| OS
+  NLB -->|"NodePort 30081"| EX
+  NLB -->|"NodePort 30082"| BI
+  OS --- RDS1
+  EX --- RDS2
+  BI --- MDB
+  OS <-->|"comandos e eventos"| RMQ
+  EX <--> RMQ
+  BI <--> RMQ
+  BI -->|"cobrança · consulta · cancelamento · reembolso"| MP
+  MP -.->|"webhook /billing/webhooks/mercadopago"| APIGW
+  EKS -.->|"agente"| NR
+  GH -->|"imagem"| ECR
+  GH -->|"deploy"| EKS
+
+  APIGW ~~~ SSM
+  RDS1 ~~~ NR
+  style AWS fill:#f6f8fa,stroke:#57606a
+  style VPC fill:#eef3fb,stroke:#3b6ea5
+  style EKS fill:#e6f2e6,stroke:#2e7d32

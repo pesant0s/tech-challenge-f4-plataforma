@@ -39,16 +39,18 @@ case "$acao" in
     laboratorio=$(aws iam list-roles --query "Roles[?contains(RoleName, 'LabEksClusterRole')].RoleName" --output text)
     if [[ -n "$laboratorio" && "$laboratorio" != "None" ]]; then
       # Laboratório: credenciais da sessão, que expiram; rode de novo a cada sessão.
-      declare -A cred=()
+      # Variáveis cred_<CHAVE> no lugar de `declare -A`, que o bash 3.2 do macOS não tem.
       while IFS='=' read -r chave valor; do
-        [[ "$chave" =~ ^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$ ]] && cred[$chave]=$valor
+        [[ "$chave" =~ ^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$ ]] && printf -v "cred_$chave" '%s' "$valor"
       done < <(aws configure export-credentials --format env-no-export)
       for chave in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
-        [[ -n "${cred[$chave]:-}" ]] || { echo "Credencial $chave ausente na sessão atual." >&2; exit 1; }
+        var="cred_$chave"
+        [[ -n "${!var:-}" ]] || { echo "Credencial $chave ausente na sessão atual." >&2; exit 1; }
       done
       for repo in "${REPOS[@]}"; do
         for chave in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
-          printf '%s' "${cred[$chave]}" | gh secret set "$chave" --repo "$dono/$repo"
+          var="cred_$chave"
+          printf '%s' "${!var}" | gh secret set "$chave" --repo "$dono/$repo"
         done
         # Com AWS_ROLE_ARN os pipelines escolheriam o OIDC, que não existe no laboratório.
         gh secret delete AWS_ROLE_ARN --repo "$dono/$repo" >/dev/null 2>&1 || true

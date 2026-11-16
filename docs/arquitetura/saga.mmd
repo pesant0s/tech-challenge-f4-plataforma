@@ -1,0 +1,81 @@
+sequenceDiagram
+  autonumber
+  participant F as Funcionário / Cliente
+  participant OS as OS Service<br/>orquestrador
+  participant EX as Execução e Produção
+  participant BI as Billing
+  participant MP as Mercado Pago
+
+  rect rgb(232, 245, 233)
+    Note over F,MP: Caminho feliz
+    F->>OS: abre a OS
+    Note over OS: OS ABERTA · Saga em RESERVANDO_PECAS
+    OS->>EX: ReservarPecas
+    EX-->>OS: PecasReservadas (itens com preço)
+    OS->>BI: GerarOrcamento
+    BI-->>OS: OrcamentoGerado
+    Note over OS: OS AGUARDANDO_APROVACAO
+    F->>BI: aprova o orçamento
+    BI-->>OS: OrcamentoAprovado
+    Note over OS: OS AGUARDANDO_PAGAMENTO
+    OS->>BI: Cobrar
+    BI->>MP: POST /v1/orders (QR dinâmico)
+    BI-->>OS: CobrancaCriada
+    F->>MP: paga o QR no aplicativo
+    MP-->>BI: pedido processed (conciliação periódica ou webhook)
+    BI-->>OS: PagamentoConfirmado
+    OS->>EX: EnfileirarOS
+    EX-->>OS: OSEnfileirada
+    Note over OS: OS NA_FILA · depois daqui a oficina não cancela mais
+    F->>EX: chama a próxima OS da fila
+    EX-->>OS: DiagnosticoIniciado
+    F->>EX: inicia o reparo
+    EX-->>OS: ExecucaoIniciada
+    F->>EX: finaliza a execução
+    EX-->>OS: ExecucaoFinalizada
+    Note over OS: OS FINALIZADA · Saga CONCLUIDA
+    F->>OS: entrega o veículo
+    Note over OS: OS ENTREGUE
+  end
+
+  rect rgb(255, 243, 224)
+    Note over F,MP: Compensações · uma por vez, na ordem inversa dos passos concluídos
+    alt ReservaRecusada
+      EX-->>OS: ReservaRecusada
+      Note over OS: nada a desfazer · OS CANCELADA
+    else OrcamentoRejeitado (cliente rejeita ou orçamento expira)
+      BI-->>OS: OrcamentoRejeitado (ORCAMENTO_REJEITADO ou ORCAMENTO_EXPIRADO)
+      OS->>EX: LiberarReserva
+      EX-->>OS: ReservaLiberada
+      Note over OS: OS NEGADA se o motivo é ORCAMENTO_REJEITADO · senão CANCELADA
+    else PagamentoRecusado (QR expirado ou recusado)
+      BI-->>OS: PagamentoRecusado
+      OS->>BI: CancelarOrcamento
+      BI-->>OS: OrcamentoCancelado
+      OS->>EX: LiberarReserva
+      EX-->>OS: ReservaLiberada
+      Note over OS: OS CANCELADA
+    else EnfileiramentoRecusado, ou prazo esgotado depois do pagamento
+      EX-->>OS: EnfileiramentoRecusado
+      OS->>BI: Reembolsar
+      BI->>MP: POST /v1/orders/{id}/refund
+      BI-->>OS: PagamentoReembolsado
+      OS->>BI: CancelarOrcamento
+      BI-->>OS: OrcamentoCancelado
+      OS->>EX: LiberarReserva
+      EX-->>OS: ReservaLiberada
+      Note over OS: OS CANCELADA
+    else pagamento tardio (a oficina cancela e o pagamento chega depois)
+      F->>OS: cancela a OS (possível até o passo AGUARDANDO_PAGAMENTO)
+      Note over OS: Saga COMPENSANDO · CancelarOrcamento e LiberarReserva pendentes
+      BI-->>OS: PagamentoConfirmado
+      Note over OS: acrescenta Reembolsar ao fim das compensações pendentes
+      OS->>BI: Reembolsar
+      BI->>MP: POST /v1/orders/{id}/refund
+      BI-->>OS: PagamentoReembolsado
+      Note over OS: OS CANCELADA · Saga COMPENSADA
+    else ReembolsoFalhou
+      BI-->>OS: ReembolsoFalhou
+      Note over OS: Saga em FALHA_NA_COMPENSACAO · alerta e ação humana
+    end
+  end
